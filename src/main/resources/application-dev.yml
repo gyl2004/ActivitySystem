@@ -19,8 +19,16 @@ spring:
       port: 5672
       username: guest
       password: guest
+      publisher-confirm-type: correlated
+      publisher-returns: true
+      template:
+        retry:
+          enabled: true
+          initial-interval: 1000ms
+          max-attempts: 3
       listener:
         simple:
+          auto-startup: false # 开发环境下默认不启动监听器，避免连接失败导致报错
           retry:
             enabled: true
             initial-interval: 1000ms

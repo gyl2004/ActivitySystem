@@ -34,7 +34,7 @@ public class MessageListener {
         sysMessage.setTitle(title);
         sysMessage.setContent(content);
         sysMessage.setType(type);
-        sysMessage.setReadStatus(0);
+        sysMessage.setStatus(0);
         messageService.save(sysMessage);
 
         // 2. 实时推送 (WebSocket)

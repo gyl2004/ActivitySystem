@@ -16,11 +16,13 @@ import com.charity.modules.registration.service.RegistrationService;
 import com.charity.modules.registration.vo.RegistrationVO;
 import com.charity.modules.sys.entity.SysUser;
 import com.charity.modules.sys.service.SysUserService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import com.charity.config.RabbitMQConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -31,6 +33,7 @@ import java.util.stream.Collectors;
 /**
  * 报名服务实现类
  */
+@Slf4j
 @Service
 public class RegistrationServiceImpl extends ServiceImpl<ActivityRegistrationMapper, ActivityRegistration> implements RegistrationService {
 
@@ -236,7 +239,12 @@ public class RegistrationServiceImpl extends ServiceImpl<ActivityRegistrationMap
         message.put("title", title);
         message.put("content", content);
         message.put("type", type);
-        rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFY_EXCHANGE, RabbitMQConfig.NOTIFY_ROUTING_KEY, message);
+        try {
+            rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFY_EXCHANGE, RabbitMQConfig.NOTIFY_ROUTING_KEY, message);
+        } catch (Exception e) {
+            // 捕获 RabbitMQ 连接异常，避免影响主流程
+            log.error("Failed to send MQ notification: {}", e.getMessage());
+        }
     }
 
     @Override

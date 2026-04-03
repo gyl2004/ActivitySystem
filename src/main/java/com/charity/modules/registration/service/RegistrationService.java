@@ -51,7 +51,6 @@ public interface RegistrationService extends IService<ActivityRegistration> {
      * 报名退款处理
      */
     void refund(Long id);
-}
 
     /**
      * 获取当前用户的报名记录

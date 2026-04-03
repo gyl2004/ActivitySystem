@@ -2,6 +2,7 @@ package com.charity.modules.activity.doc;
 
 import lombok.Data;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.elasticsearch.annotations.DateFormat;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
@@ -11,10 +12,10 @@ import org.springframework.data.elasticsearch.core.geo.GeoPoint;
 import java.time.LocalDateTime;
 
 @Data
-@Document(indexName = "activity")
+@Document(indexName = "activity", createIndex = false)
 public class ActivityDoc {
     @Id
-    private Long id;
+    private String id;
 
     @Field(type = FieldType.Long)
     private Long categoryId;
@@ -34,10 +35,10 @@ public class ActivityDoc {
     @Field(type = FieldType.Integer)
     private Integer status;
 
-    @Field(type = FieldType.Date, format = {}, pattern = "uuuu-MM-dd HH:mm:ss")
+    @Field(type = FieldType.Date, format = DateFormat.date_hour_minute_second)
     private LocalDateTime startTime;
 
-    @Field(type = FieldType.Date, format = {}, pattern = "uuuu-MM-dd HH:mm:ss")
+    @Field(type = FieldType.Date, format = DateFormat.date_hour_minute_second)
     private LocalDateTime endTime;
 
     @Field(type = FieldType.Text, analyzer = "ik_max_word", searchAnalyzer = "ik_smart")
@@ -61,6 +62,6 @@ public class ActivityDoc {
     @Field(type = FieldType.Integer)
     private Integer viewCount;
 
-    @Field(type = FieldType.Date, format = {}, pattern = "uuuu-MM-dd HH:mm:ss")
+    @Field(type = FieldType.Date, format = DateFormat.date_hour_minute_second)
     private LocalDateTime createTime;
 }

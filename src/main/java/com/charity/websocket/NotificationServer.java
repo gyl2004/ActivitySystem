@@ -1,25 +1,26 @@
 package com.charity.websocket;
 
 import jakarta.websocket.*;
+import jakarta.websocket.server.PathParam;
 import jakarta.websocket.server.ServerEndpoint;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 活动通知 WebSocket 服务端
  */
 @Slf4j
 @Component
-@ServerEndpoint("/api/ws/notification")
+@ServerEndpoint("/api/ws/notification/{userId}")
 public class NotificationServer {
 
     /**
-     * 静态变量，用来记录当前在线连接数
+     * 用来存放每个客户端对应的 NotificationServer 对象
      */
-    private static final CopyOnWriteArraySet<NotificationServer> webSocketSet = new CopyOnWriteArraySet<>();
+    private static final ConcurrentHashMap<String, NotificationServer> webSocketMap = new ConcurrentHashMap<>();
 
     /**
      * 与某个客户端的连接会话，需要通过它来给客户端发送数据
@@ -27,13 +28,19 @@ public class NotificationServer {
     private Session session;
 
     /**
+     * 接收 userId
+     */
+    private String userId;
+
+    /**
      * 连接建立成功调用的方法
      */
     @OnOpen
-    public void onOpen(Session session) {
+    public void onOpen(Session session, @PathParam("userId") String userId) {
         this.session = session;
-        webSocketSet.add(this);
-        log.info("WebSocket 连接成功，当前在线人数：{}", webSocketSet.size());
+        this.userId = userId;
+        webSocketMap.put(userId, this);
+        log.info("WebSocket 连接成功，用户ID：{}，当前在线人数：{}", userId, webSocketMap.size());
     }
 
     /**
@@ -41,8 +48,10 @@ public class NotificationServer {
      */
     @OnClose
     public void onClose() {
-        webSocketSet.remove(this);
-        log.info("WebSocket 连接关闭，当前在线人数：{}", webSocketSet.size());
+        if (userId != null) {
+            webSocketMap.remove(userId);
+            log.info("WebSocket 连接关闭，用户ID：{}，当前在线人数：{}", userId, webSocketMap.size());
+        }
     }
 
     /**
@@ -66,7 +75,22 @@ public class NotificationServer {
      */
     public static void sendInfo(String message) {
         log.info("推送消息到所有客户端: {}", message);
-        for (NotificationServer item : webSocketSet) {
+        for (NotificationServer item : webSocketMap.values()) {
+            try {
+                item.sendMessage(message);
+            } catch (IOException e) {
+                log.error("WebSocket 推送消息失败", e);
+            }
+        }
+    }
+
+    /**
+     * 发送自定义消息到指定客户端
+     */
+    public static void sendToUser(String userId, String message) {
+        log.info("推送消息到客户端 {}: {}", userId, message);
+        NotificationServer item = webSocketMap.get(userId);
+        if (item != null) {
             try {
                 item.sendMessage(message);
             } catch (IOException e) {

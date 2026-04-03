@@ -184,7 +184,7 @@ public class ActivityServiceImpl extends ServiceImpl<ActivityMapper, Activity> i
     @Override
     public IPage<Activity> search(Page<Activity> page, String keyword) {
         List<ActivityDoc> docs = activityRepository.findByTitleOrSummaryOrContent(keyword, keyword, keyword);
-        List<Long> ids = docs.stream().map(ActivityDoc::getId).collect(Collectors.toList());
+        List<Long> ids = docs.stream().map(doc -> Long.valueOf(doc.getId())).collect(Collectors.toList());
         if (ids.isEmpty()) {
             return new Page<>();
         }
@@ -250,7 +250,8 @@ public class ActivityServiceImpl extends ServiceImpl<ActivityMapper, Activity> i
     }
 
     private void syncToEs(Activity activity) {
-        ActivityDoc doc = BeanUtil.copyProperties(activity, ActivityDoc.class);
+        ActivityDoc doc = BeanUtil.copyProperties(activity, ActivityDoc.class, "id");
+        doc.setId(activity.getId().toString());
         if (activity.getLongitude() != null && activity.getLatitude() != null) {
             doc.setLocation(new GeoPoint(activity.getLatitude().doubleValue(), activity.getLongitude().doubleValue()));
         }
@@ -258,6 +259,6 @@ public class ActivityServiceImpl extends ServiceImpl<ActivityMapper, Activity> i
     }
 
     private void deleteFromEs(Long id) {
-        activityRepository.deleteById(id);
+        activityRepository.deleteById(id.toString());
     }
 }

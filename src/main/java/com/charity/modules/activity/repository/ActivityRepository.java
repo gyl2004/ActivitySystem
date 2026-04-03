@@ -7,6 +7,6 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface ActivityRepository extends ElasticsearchRepository<ActivityDoc, Long> {
+public interface ActivityRepository extends ElasticsearchRepository<ActivityDoc, String> {
     List<ActivityDoc> findByTitleOrSummaryOrContent(String title, String summary, String content);
 }
