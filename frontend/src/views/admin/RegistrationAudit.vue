@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Check, X, MoreVertical, Shield, Clock, AlertCircle } from 'lucide-vue-next'
+import { Check, X, MoreVertical, Shield, Clock, AlertCircle, Download, Users } from 'lucide-vue-next'
 import request from '../../utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { downloadBlob } from '../../utils/download'
 
 const loading = ref(true)
 const registrations = ref<any[]>([])
 const statsMap = ref<any>({})
 const pagination = ref({ current: 1, size: 10, total: 0 })
 const activeStatus = ref<number | null>(null) // null 表示全部
+const exporting = ref(false)
 
 const fetchStats = async () => {
   try {
@@ -38,6 +40,24 @@ const fetchRegistrations = async () => {
   }
 }
 
+const handleExport = async () => {
+  exporting.value = true
+  try {
+    const blob: any = await request.get('/api/registrations/export', {
+      params: {
+        status: activeStatus.value
+      },
+      responseType: 'blob'
+    })
+    downloadBlob(blob, `报名数据_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    console.error(error)
+  } finally {
+    exporting.value = false
+  }
+}
+
 const handleStatusFilter = (status: number | null) => {
   activeStatus.value = status
   pagination.value.current = 1
@@ -63,7 +83,8 @@ const getStatusLabel = (status: number) => {
     0: { text: '待审核', icon: Clock, color: 'text-orange-500', bg: 'bg-orange-50', border: 'border-orange-100' },
     1: { text: '已通过', icon: Shield, color: 'text-primary-600', bg: 'bg-primary-50', border: 'border-primary-100' },
     2: { text: '已驳回', icon: X, color: 'text-rose-500', bg: 'bg-rose-50', border: 'border-rose-100' },
-    3: { text: '已取消', icon: AlertCircle, color: 'text-slate-400', bg: 'bg-slate-50', border: 'border-slate-100' }
+    3: { text: '已取消', icon: AlertCircle, color: 'text-slate-400', bg: 'bg-slate-50', border: 'border-slate-100' },
+    4: { text: '候补中', icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-100' }
   }
   return statusMap[status] || statusMap[0]
 }
@@ -127,6 +148,16 @@ onMounted(() => {
 
     <!-- Registration List -->
     <div class="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden p-8 space-y-6">
+      <div class="flex justify-end">
+        <button
+          @click="handleExport"
+          :disabled="exporting"
+          class="flex items-center space-x-2 px-5 py-2.5 rounded-2xl font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all disabled:opacity-70"
+        >
+          <Download class="w-4 h-4" />
+          <span>{{ exporting ? '导出中...' : '导出报名数据' }}</span>
+        </button>
+      </div>
       <div v-if="registrations.length === 0" class="text-center py-20 text-slate-400 font-medium">
         暂无待处理的报名申请
       </div>

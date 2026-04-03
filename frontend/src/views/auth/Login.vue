@@ -25,7 +25,7 @@ const handleLogin = async () => {
     
     ElMessage.success('登录成功')
     
-    if (data.roles && data.roles.includes('admin')) {
+    if (data.roles && (data.roles.includes('admin') || data.roles.includes('super_admin'))) {
       router.push('/admin/dashboard')
     } else {
       router.push('/')

@@ -61,16 +61,34 @@ const routes: Array<RouteRecordRaw> = [
         meta: { title: '活动管理' }
       },
       {
+        path: 'categories',
+        name: 'AdminCategories',
+        component: () => import('../views/admin/CategoryManage.vue'),
+        meta: { title: '分类管理' }
+      },
+      {
         path: 'registrations',
         name: 'AdminRegistrations',
         component: () => import('../views/admin/RegistrationAudit.vue'),
         meta: { title: '报名审核' }
       },
       {
+        path: 'checkins',
+        name: 'AdminCheckins',
+        component: () => import('../views/admin/CheckinManage.vue'),
+        meta: { title: '签到管理' }
+      },
+      {
         path: 'reviews',
         name: 'AdminReviews',
         component: () => import('../views/admin/ReviewManage.vue'),
         meta: { title: '评价管理' }
+      },
+      {
+        path: 'users',
+        name: 'AdminUsers',
+        component: () => import('../views/admin/UserManage.vue'),
+        meta: { title: '用户管理' }
       },
       {
         path: 'settings',

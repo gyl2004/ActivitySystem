@@ -1,6 +1,7 @@
 package com.charity.modules.registration.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.charity.modules.registration.dto.RegistrationQueryDTO;
 import com.charity.modules.registration.entity.ActivityRegistration;
 import com.charity.modules.registration.dto.RegistrationDTO;
 import com.charity.modules.registration.dto.AuditDTO;
@@ -56,4 +57,19 @@ public interface RegistrationService extends IService<ActivityRegistration> {
      * 获取当前用户的报名记录
      */
     List<RegistrationVO> findMyRegistrations(Long userId);
+
+    /**
+     * 导出报名数据
+     */
+    void exportRegistrations(jakarta.servlet.http.HttpServletResponse response, RegistrationQueryDTO queryDTO);
+
+    /**
+     * 异步处理报名逻辑 (MQ 消费者调用)
+     */
+    void doRegisterAsync(RegistrationDTO registrationDTO, Long userId);
+
+    /**
+     * 生成并下载志愿者证书
+     */
+    void downloadCertificate(jakarta.servlet.http.HttpServletResponse response, Long activityId, Long userId);
 }

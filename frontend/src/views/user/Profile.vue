@@ -1,15 +1,96 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { Mail, Phone, Calendar, Heart, Shield, Settings, LogOut, ChevronRight, Clock, Loader2, LayoutDashboard } from 'lucide-vue-next'
+import { Mail, Phone, Calendar, Heart, Shield, Settings, LogOut, ChevronRight, Clock, Loader2, LayoutDashboard, Camera } from 'lucide-vue-next'
 import request from '../../utils/request'
 import { ElMessage } from 'element-plus'
+import type { UploadProps, FormInstance, FormRules } from 'element-plus'
 
 const router = useRouter()
 const loading = ref(true)
 const user = ref<any>(null)
 const isAdmin = ref(false)
 const registrations = ref<any[]>([])
+
+// 编辑资料相关
+const editDialogVisible = ref(false)
+const saving = ref(false)
+const editFormRef = ref<FormInstance>()
+const editForm = reactive({
+  nickname: '',
+  email: '',
+  phone: '',
+  gender: 0
+})
+
+const rules = reactive<FormRules>({
+  nickname: [{ required: true, message: '昵称不能为空', trigger: 'blur' }],
+  email: [
+    { type: 'email', message: '邮箱格式不正确', trigger: ['blur', 'change'] }
+  ],
+  phone: [
+    { pattern: /^(1[3-9][0-9]{9})?$/, message: '手机号格式不正确', trigger: ['blur', 'change'] }
+  ]
+})
+
+const openEditDialog = () => {
+  editForm.nickname = user.value.nickname || ''
+  editForm.email = user.value.email || ''
+  editForm.phone = user.value.phone || ''
+  editForm.gender = user.value.gender || 0
+  editDialogVisible.value = true
+}
+
+const submitEdit = async () => {
+  if (!editFormRef.value) return
+  await editFormRef.value.validate(async (valid) => {
+    if (valid) {
+      saving.value = true
+      try {
+        await request.put('/api/users/profile', editForm)
+        ElMessage.success('资料已更新')
+        editDialogVisible.value = false
+        await fetchData() // 重新获取数据
+      } catch (error) {
+        console.error(error)
+      } finally {
+        saving.value = false
+      }
+    }
+  })
+}
+
+// 头像上传相关
+const uploadHeaders = {
+  Authorization: localStorage.getItem('tokenPrefix') + ' ' + localStorage.getItem('token')
+}
+
+const handleAvatarSuccess: UploadProps['onSuccess'] = async (response) => {
+  if (response.code === 200) {
+    const avatarUrl = response.data
+    try {
+      await request.put('/api/users/avatar', null, { params: { avatarUrl } })
+      ElMessage.success('头像已更新')
+      user.value.avatar = avatarUrl
+    } catch (error) {
+      console.error(error)
+    }
+  } else {
+    ElMessage.error(response.message || '上传失败')
+  }
+}
+
+const beforeAvatarUpload: UploadProps['beforeUpload'] = (rawFile) => {
+  if (!rawFile.type.startsWith('image/')) {
+    ElMessage.error('只能上传图片文件!')
+    return false
+  }
+  if (rawFile.size / 1024 / 1024 > 2) {
+    ElMessage.error('图片大小不能超过 2MB!')
+    return false
+  }
+  return true
+}
 
 const stats = ref([
   { label: '参与活动', value: 0, icon: Heart, color: 'text-rose-500', bg: 'bg-rose-50' },
@@ -22,7 +103,7 @@ const fetchData = async () => {
     // 1. 获取用户信息
     const data: any = await request.get('/api/auth/me')
     user.value = data.user
-    isAdmin.value = data.roles.includes('admin')
+    isAdmin.value = data.roles.includes('admin') || data.roles.includes('super_admin')
     
     stats.value[1].value = (user.value.volunteerDuration || 0) + 'h'
     stats.value[2].value = user.value.points || 0
@@ -71,8 +152,22 @@ onMounted(() => {
       <div class="bg-white rounded-[3rem] border border-slate-100 shadow-xl p-10 text-center relative overflow-hidden">
         <div class="absolute top-0 left-0 right-0 h-32 bg-gradient-to-r from-primary-400 to-primary-600"></div>
         <div class="relative pt-8">
-          <div class="inline-block p-2 bg-white rounded-[2.5rem] shadow-lg mb-6">
-            <img :src="user.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.id" class="w-32 h-32 rounded-[2rem] bg-slate-50" alt="Avatar" />
+          <div class="inline-block relative">
+            <div class="p-2 bg-white rounded-[2.5rem] shadow-lg mb-6 relative group overflow-hidden">
+              <img :src="user.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.id" class="w-32 h-32 rounded-[2rem] bg-slate-50 object-cover" alt="Avatar" />
+              
+              <el-upload
+                class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center cursor-pointer rounded-[2.5rem]"
+                action="/api/upload/image"
+                :headers="uploadHeaders"
+                :show-file-list="false"
+                :on-success="handleAvatarSuccess"
+                :before-upload="beforeAvatarUpload"
+              >
+                <Camera class="w-8 h-8 text-white mb-1" />
+                <span class="text-white text-xs font-bold">更换头像</span>
+              </el-upload>
+            </div>
           </div>
           <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight">{{ user.nickname }}</h2>
           <p class="text-slate-400 font-medium mt-1">@{{ user.username }}</p>
@@ -109,7 +204,7 @@ onMounted(() => {
             <span>进入管理后台</span>
           </button>
 
-          <button class="w-full py-4 bg-slate-900 text-white rounded-[1.5rem] font-bold text-lg hover:bg-slate-800 transition-all active:scale-95 flex items-center justify-center space-x-2 shadow-xl shadow-slate-200">
+          <button @click="openEditDialog" class="w-full py-4 bg-slate-900 text-white rounded-[1.5rem] font-bold text-lg hover:bg-slate-800 transition-all active:scale-95 flex items-center justify-center space-x-2 shadow-xl shadow-slate-200">
             <Settings class="w-5 h-5" />
             <span>编辑个人资料</span>
           </button>
@@ -190,5 +285,60 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- Edit Profile Dialog -->
+    <el-dialog
+      v-model="editDialogVisible"
+      title="编辑个人资料"
+      width="480px"
+      class="sunny-dialog"
+      destroy-on-close
+    >
+      <el-form
+        ref="editFormRef"
+        :model="editForm"
+        :rules="rules"
+        label-position="top"
+        class="space-y-4"
+      >
+        <el-form-item label="昵称" prop="nickname">
+          <el-input v-model="editForm.nickname" placeholder="请输入昵称" class="h-12" />
+        </el-form-item>
+        
+        <el-form-item label="性别" prop="gender">
+          <el-radio-group v-model="editForm.gender" class="w-full flex">
+            <el-radio :value="1" class="flex-1 text-center">男</el-radio>
+            <el-radio :value="2" class="flex-1 text-center">女</el-radio>
+            <el-radio :value="0" class="flex-1 text-center">保密</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item label="手机号" prop="phone">
+          <el-input v-model="editForm.phone" placeholder="请输入11位手机号" class="h-12" />
+        </el-form-item>
+        
+        <el-form-item label="电子邮箱" prop="email">
+          <el-input v-model="editForm.email" placeholder="请输入电子邮箱" class="h-12" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="flex space-x-3 pt-4">
+          <button 
+            @click="editDialogVisible = false"
+            class="flex-1 py-3 px-4 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+          >
+            取消
+          </button>
+          <button 
+            @click="submitEdit"
+            :disabled="saving"
+            class="flex-1 py-3 px-4 bg-primary-500 text-white rounded-xl font-bold hover:bg-primary-600 transition-colors shadow-lg shadow-primary-200 disabled:opacity-70 flex items-center justify-center"
+          >
+            <Loader2 v-if="saving" class="w-5 h-5 animate-spin mr-2" />
+            <span>保存修改</span>
+          </button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>

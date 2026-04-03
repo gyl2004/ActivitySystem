@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { 
   Users, 
   Calendar, 
@@ -11,23 +12,108 @@ import {
   Loader2
 } from 'lucide-vue-next'
 import request from '../../utils/request'
+import * as echarts from 'echarts'
 
+const router = useRouter()
 const loading = ref(true)
+const userPermissions = ref<string[]>([])
 const stats = ref([
   { label: '总活动数', value: '0', change: '+0%', isUp: true, icon: Calendar, color: 'text-primary-600', bg: 'bg-primary-50', key: 'totalActivities' },
   { label: '总报名数', value: '0', change: '+0%', isUp: true, icon: Users, color: 'text-blue-500', bg: 'bg-blue-50', key: 'totalRegistrations' },
   { label: '总签到数', value: '0', change: '+0%', isUp: true, icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50', key: 'totalCheckins' },
-  { label: '平均评分', value: '4.8', change: '+0%', isUp: true, icon: TrendingUp, color: 'text-rose-500', bg: 'bg-rose-50', key: 'avgRating' },
+  { label: '总用户数', value: '0', change: '+0%', isUp: true, icon: TrendingUp, color: 'text-rose-500', bg: 'bg-rose-50', key: 'totalUsers' },
 ])
 
 const recentActivities = ref<any[]>([])
+const trendRef = ref<HTMLDivElement | null>(null)
+const categoryRef = ref<HTMLDivElement | null>(null)
+let trendChart: echarts.ECharts | null = null
+let categoryChart: echarts.ECharts | null = null
+
+const renderCharts = async (statsData: any) => {
+  await nextTick()
+  if (trendRef.value) {
+    if (!trendChart) {
+      trendChart = echarts.init(trendRef.value)
+    }
+    const trend = statsData.registrationTrend || { dates: [], counts: [] }
+    trendChart.setOption({
+      grid: { left: 24, right: 18, top: 20, bottom: 28 },
+      tooltip: { trigger: 'axis' },
+      xAxis: {
+        type: 'category',
+        data: trend.dates || [],
+        boundaryGap: false,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { color: '#64748b', fontWeight: 700 }
+      },
+      yAxis: {
+        type: 'value',
+        axisLine: { show: false },
+        splitLine: { lineStyle: { color: '#f1f5f9' } },
+        axisLabel: { color: '#94a3b8', fontWeight: 700 }
+      },
+      series: [
+        {
+          name: '报名人数',
+          type: 'line',
+          data: trend.counts || [],
+          smooth: true,
+          symbol: 'circle',
+          symbolSize: 8,
+          lineStyle: { width: 3, color: '#22c55e' },
+          itemStyle: { color: '#22c55e' },
+          areaStyle: { color: 'rgba(34, 197, 94, 0.12)' }
+        }
+      ]
+    })
+  }
+
+  if (categoryRef.value) {
+    if (!categoryChart) {
+      categoryChart = echarts.init(categoryRef.value)
+    }
+    const data = statsData.categoryDistribution || []
+    categoryChart.setOption({
+      tooltip: { trigger: 'item' },
+      legend: {
+        bottom: 0,
+        textStyle: { color: '#64748b', fontWeight: 700 }
+      },
+      series: [
+        {
+          name: '分类占比',
+          type: 'pie',
+          radius: ['45%', '70%'],
+          avoidLabelOverlap: true,
+          itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
+          label: { show: false },
+          emphasis: { label: { show: true, fontSize: 14, fontWeight: 800 } },
+          labelLine: { show: false },
+          data
+        }
+      ]
+    })
+  }
+}
+
+const isSuperAdmin = ref(false)
 
 const fetchData = async () => {
   try {
+    const userData: any = await request.get('/api/auth/me')
+    userPermissions.value = userData.permissions || []
+    isSuperAdmin.value = (userData.roles || []).includes('super_admin')
+
     const statsData: any = await request.get('/api/statistics/overall')
     stats.value[0].value = statsData.totalActivities || '0'
     stats.value[1].value = statsData.totalRegistrations || '0'
     stats.value[2].value = statsData.totalCheckins || '0'
+    stats.value[3].value = statsData.totalUsers || '0'
+    
+    // 先关闭 loading，再渲染图表
+    loading.value = false
+    await renderCharts(statsData)
 
     const activitiesData: any = await request.get('/api/activities', {
       params: { current: 1, size: 5 }
@@ -35,7 +121,6 @@ const fetchData = async () => {
     recentActivities.value = activitiesData.records
   } catch (error) {
     console.error(error)
-  } finally {
     loading.value = false
   }
 }
@@ -52,8 +137,22 @@ const getStatusLabel = (status: number) => {
   return statusMap[status] || statusMap[0]
 }
 
+const handleResize = () => {
+  trendChart?.resize()
+  categoryChart?.resize()
+}
+
 onMounted(() => {
   fetchData()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  trendChart?.dispose()
+  categoryChart?.dispose()
+  trendChart = null
+  categoryChart = null
 })
 </script>
 
@@ -69,10 +168,17 @@ onMounted(() => {
         <p class="text-slate-400 font-medium">欢迎回来，这是今天的公益数据概览。</p>
       </div>
       <div class="flex items-center space-x-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
-        <button class="px-6 py-2.5 bg-primary-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-primary-200 hover:bg-primary-600 transition-all active:scale-95">
+        <button 
+          v-if="isSuperAdmin || userPermissions.includes('activity:create')"
+          @click="router.push('/admin/activities')"
+          class="px-6 py-2.5 bg-primary-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-primary-200 hover:bg-primary-600 transition-all active:scale-95"
+        >
           发布新活动
         </button>
-        <button class="px-6 py-2.5 bg-slate-50 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-100 transition-all">
+        <button 
+          v-if="isSuperAdmin || userPermissions.includes('activity:export')"
+          class="px-6 py-2.5 bg-slate-50 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-100 transition-all"
+        >
           导出报表
         </button>
       </div>
@@ -108,29 +214,16 @@ onMounted(() => {
       <!-- Activity Trend -->
       <div class="xl:col-span-2 bg-white rounded-[3rem] border border-slate-100 shadow-sm p-10">
         <div class="flex justify-between items-center mb-10">
-          <h3 class="text-2xl font-extrabold text-slate-900 tracking-tight">活动趋势分析</h3>
-          <select class="bg-slate-50 border-none outline-none text-slate-500 font-bold text-sm px-4 py-2 rounded-xl cursor-pointer hover:bg-slate-100 transition-all">
-            <option>最近 7 天</option>
-            <option>最近 30 天</option>
-          </select>
+          <h3 class="text-2xl font-extrabold text-slate-900 tracking-tight">近 7 天报名趋势</h3>
         </div>
-        <!-- Mock Chart Visualization -->
-        <div class="h-72 flex items-end justify-between space-x-4">
-          <div v-for="i in 7" :key="i" class="flex-grow flex flex-col items-center group">
-            <div 
-              class="w-full bg-slate-50 group-hover:bg-primary-50 rounded-2xl transition-all relative flex flex-col justify-end overflow-hidden"
-              :style="{ height: `${Math.random() * 80 + 20}%` }"
-            >
-              <div class="absolute inset-x-0 bottom-0 bg-primary-500 group-hover:bg-primary-600 transition-all" :style="{ height: `${Math.random() * 60 + 20}%` }"></div>
-            </div>
-            <span class="text-xs font-bold text-slate-400 mt-4">周{{ i }}</span>
-          </div>
-        </div>
+        <div ref="trendRef" class="h-72 w-full"></div>
       </div>
 
       <!-- Recent Activities -->
       <div class="bg-white rounded-[3rem] border border-slate-100 shadow-sm p-10">
-        <h3 class="text-2xl font-extrabold text-slate-900 tracking-tight mb-8">最近更新</h3>
+        <h3 class="text-2xl font-extrabold text-slate-900 tracking-tight mb-8">分类占比</h3>
+        <div ref="categoryRef" class="h-56 w-full"></div>
+        <h3 class="text-2xl font-extrabold text-slate-900 tracking-tight mb-8 mt-10">最近更新</h3>
         <div class="space-y-6">
           <div v-if="recentActivities.length === 0" class="text-center py-10 text-slate-400">
             暂无活动数据
@@ -150,7 +243,11 @@ onMounted(() => {
             </span>
           </div>
         </div>
-        <button class="w-full mt-10 py-4 border-2 border-slate-50 text-slate-500 rounded-2xl font-bold text-sm hover:bg-slate-50 transition-all">
+        <button 
+          v-if="isSuperAdmin || userPermissions.includes('activity:manage')"
+          @click="router.push('/admin/activities')"
+          class="w-full mt-10 py-4 border-2 border-slate-50 text-slate-500 rounded-2xl font-bold text-sm hover:bg-slate-50 transition-all"
+        >
           查看所有活动
         </button>
       </div>

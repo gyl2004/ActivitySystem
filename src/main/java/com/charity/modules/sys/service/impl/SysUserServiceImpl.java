@@ -5,8 +5,11 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.charity.common.AppException;
 import com.charity.modules.sys.dto.RegisterDTO;
+import com.charity.modules.sys.entity.SysRole;
 import com.charity.modules.sys.entity.SysUser;
+import com.charity.modules.sys.mapper.SysRoleMapper;
 import com.charity.modules.sys.mapper.SysUserMapper;
+import com.charity.modules.sys.mapper.SysUserRoleMapper;
 import com.charity.modules.sys.service.SysUserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,6 +26,12 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private SysRoleMapper roleMapper;
+
+    @Autowired
+    private SysUserRoleMapper userRoleMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -61,5 +70,14 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         user.setCreateTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());
         this.save(user);
+
+        SysRole volunteerRole = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getRoleKey, "volunteer")
+                .eq(SysRole::getStatus, 1)
+                .eq(SysRole::getDeleted, 0)
+                .last("LIMIT 1"));
+        if (volunteerRole != null) {
+            userRoleMapper.insertRole(user.getId(), volunteerRole.getId());
+        }
     }
 }

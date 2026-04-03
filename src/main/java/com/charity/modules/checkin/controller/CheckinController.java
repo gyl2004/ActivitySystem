@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -45,5 +46,14 @@ public class CheckinController {
                 .eq(ActivityCheckin::getUserId, userId)
                 .last("LIMIT 1"));
         return Result.success(checkin);
+    }
+
+    @Operation(summary = "生成活动签到码 (管理端)")
+    @GetMapping("/code/{activityId}")
+    @PreAuthorize("hasAuthority('checkin:audit')")
+    public Result<String> generateCheckinCode(
+            @PathVariable Long activityId,
+            @RequestParam(defaultValue = "5") Integer expireMinutes) {
+        return Result.success(checkinService.generateCheckinCode(activityId, expireMinutes));
     }
 }

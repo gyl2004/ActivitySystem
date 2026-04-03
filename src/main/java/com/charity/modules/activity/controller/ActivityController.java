@@ -16,6 +16,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /**
  * 活动控制器
  */
@@ -100,6 +102,15 @@ public class ActivityController {
             @RequestParam String keyword) {
         Page<Activity> page = new Page<>(current, size);
         return Result.success(activityService.search(page, keyword));
+    }
+
+    @Operation(summary = "搜索附近活动")
+    @GetMapping("/nearby")
+    public Result<List<Activity>> findNearby(
+            @RequestParam Double longitude,
+            @RequestParam Double latitude,
+            @RequestParam(defaultValue = "5.0") Double distance) {
+        return Result.success(activityService.findNearby(longitude, latitude, distance));
     }
 
     @Operation(summary = "复制活动")

@@ -38,25 +38,44 @@ INSERT INTO `sys_permission` (`id`, `parent_id`, `name`, `permission_key`, `type
 (4, 1, '删除活动', 'activity:delete', 3, 3, 1),
 (5, 1, '发布活动', 'activity:publish', 3, 4, 1),
 (6, 1, '取消活动', 'activity:cancel', 3, 5, 1),
+(7, 1, '导出活动', 'activity:export', 3, 6, 1),
+
+-- 分类管理权限
+(8, 0, '分类管理', 'category:manage', 1, 6, 1),
+(9, 8, '创建分类', 'category:create', 3, 1, 1),
+(10, 8, '更新分类', 'category:update', 3, 2, 1),
+(11, 8, '删除分类', 'category:delete', 3, 3, 1),
 
 -- 报名与审核权限
-(10, 0, '报名管理', 'registration:manage', 1, 2, 1),
-(11, 10, '审核报名', 'registration:audit', 3, 1, 1),
+(20, 0, '报名管理', 'registration:manage', 1, 2, 1),
+(21, 20, '审核报名', 'registration:audit', 3, 1, 1),
+(22, 20, '导出报名', 'registration:export', 3, 2, 1),
+
+-- 签到管理权限
+(40, 0, '签到管理', 'checkin:manage', 1, 5, 1),
+(41, 40, '签到审核/二维码', 'checkin:audit', 3, 1, 1),
 
 -- 评价管理权限
-(20, 0, '评价管理', 'review:manage', 1, 3, 1),
-(21, 20, '审核评价', 'review:audit', 3, 1, 1),
+(30, 0, '评价管理', 'review:manage', 1, 3, 1),
+(31, 30, '审核评价', 'review:audit', 3, 1, 1),
 
 -- 统计权限
-(30, 0, '统计分析', 'statistics:manage', 1, 4, 1),
-(31, 30, '查看统计', 'statistics:view', 3, 1, 1);
+(50, 0, '统计分析', 'statistics:manage', 1, 4, 1),
+(51, 50, '查看统计', 'statistics:view', 3, 1, 1),
+
+-- 用户管理权限
+(60, 0, '用户管理', 'user:manage', 1, 7, 1),
+(61, 60, '分配角色', 'user:role:assign', 3, 1, 1);
 
 -- 角色-权限关联 (管理员拥有所有权限)
 INSERT INTO `sys_role_permission` (`role_id`, `permission_id`) VALUES 
-(1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6),
-(1, 10), (1, 11),
-(1, 20), (1, 21),
-(1, 30), (1, 31);
+(1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7),
+(1, 8), (1, 9), (1, 10), (1, 11),
+(1, 20), (1, 21), (1, 22),
+(1, 40), (1, 41),
+(1, 30), (1, 31),
+(1, 50), (1, 51),
+(1, 60), (1, 61);
 
 -- ----------------------------
 -- 3. 用户初始化

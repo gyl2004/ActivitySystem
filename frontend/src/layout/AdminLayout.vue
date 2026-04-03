@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { 
   LayoutDashboard, 
   Calendar, 
+  Tag,
+  ClipboardCheck,
   Users, 
   MessageSquare, 
   Settings, 
@@ -20,10 +22,12 @@ const router = useRouter()
 const isSidebarOpen = ref(true)
 const user = ref<any>(null)
 let socket: WebSocket | null = null
+const wsIdentity = ref('admin')
+let shouldReconnect = true
 
 const initWebSocket = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsUrl = `${protocol}//localhost:8080/api/ws/notification`
+  const wsUrl = `${protocol}//localhost:8080/api/ws/notification/${encodeURIComponent(wsIdentity.value)}`
   
   socket = new WebSocket(wsUrl)
   
@@ -51,6 +55,17 @@ const initWebSocket = () => {
       return
     }
 
+    if (payload && payload.type === 'checkin') {
+      ElNotification({
+        title: '新签到',
+        message: `${payload.nickname || '用户'} 已签到：${payload.activityTitle || payload.activityId}`,
+        type: 'success',
+        duration: 5000,
+        position: 'bottom-right'
+      })
+      return
+    }
+
     ElNotification({
       title: '新消息',
       message: event.data,
@@ -62,23 +77,47 @@ const initWebSocket = () => {
   
   socket.onclose = () => {
     console.log('WebSocket connection closed')
-    // 重连逻辑
-    setTimeout(() => initWebSocket(), 5000)
+    if (shouldReconnect) {
+      setTimeout(() => initWebSocket(), 5000)
+    }
   }
 }
 
 const menuItems = [
   { label: '控制台', icon: LayoutDashboard, path: '/admin/dashboard' },
-  { label: '活动管理', icon: Calendar, path: '/admin/activities' },
-  { label: '报名审核', icon: Users, path: '/admin/registrations' },
-  { label: '评价管理', icon: MessageSquare, path: '/admin/reviews' },
-  { label: '系统设置', icon: Settings, path: '/admin/settings' },
+  { label: '活动管理', icon: Calendar, path: '/admin/activities', permission: 'activity:manage' },
+  { label: '分类管理', icon: Tag, path: '/admin/categories', permission: 'category:manage' },
+  { label: '报名审核', icon: Users, path: '/admin/registrations', permission: 'registration:manage' },
+  { label: '签到管理', icon: ClipboardCheck, path: '/admin/checkins', permission: 'checkin:manage' },
+  { label: '评价管理', icon: MessageSquare, path: '/admin/reviews', permission: 'review:manage' },
+  { label: '用户管理', icon: Users, path: '/admin/users', permission: 'user:manage' },
+  { label: '系统设置', icon: Settings, path: '/admin/settings', permission: 'statistics:manage' },
 ]
+
+const filteredMenuItems = ref<any[]>([])
 
 const fetchUser = async () => {
   try {
     const data: any = await request.get('/api/auth/me')
     user.value = data.user
+    wsIdentity.value = String(data.user?.id || 'admin')
+    
+    // 动态过滤菜单
+     const permissions = data.permissions || []
+     const roles = data.roles || []
+     const isSuperAdmin = roles.includes('super_admin')
+
+     filteredMenuItems.value = menuItems.filter(item => {
+       if (isSuperAdmin) return true // 超级管理员显示所有菜单
+       if (!item.permission) return true
+       return permissions.includes(item.permission)
+     })
+
+    if (socket) {
+      socket.close()
+    } else {
+      initWebSocket()
+    }
   } catch (error) {
     console.error(error)
     router.push('/login')
@@ -88,6 +127,10 @@ const fetchUser = async () => {
 const handleLogout = () => {
   localStorage.removeItem('token')
   localStorage.removeItem('tokenPrefix')
+  shouldReconnect = false
+  if (socket) {
+    socket.close()
+  }
   ElMessage.success('已退出登录')
   router.push('/login')
 }
@@ -99,6 +142,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (socket) {
+    shouldReconnect = false
     socket.close()
   }
 })
@@ -125,7 +169,7 @@ onUnmounted(() => {
         <!-- Menu -->
         <nav class="flex-grow px-4 space-y-2">
           <button 
-            v-for="item in menuItems" 
+            v-for="item in filteredMenuItems" 
             :key="item.path"
             @click="router.push(item.path)"
             :class="[

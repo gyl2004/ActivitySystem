@@ -6,12 +6,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.charity.common.Result;
 import com.charity.modules.registration.dto.AuditDTO;
 import com.charity.modules.registration.dto.RegistrationDTO;
+import com.charity.modules.registration.dto.RegistrationQueryDTO;
 import com.charity.modules.registration.entity.ActivityRegistration;
 import com.charity.modules.registration.service.RegistrationService;
 import com.charity.util.SecurityUtils;
 import com.charity.modules.registration.vo.RegistrationVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -90,6 +92,13 @@ public class RegistrationController {
         return Result.success();
     }
 
+    @Operation(summary = "导出报名数据")
+    @GetMapping("/export")
+    @PreAuthorize("hasAuthority('registration:export')")
+    public void export(HttpServletResponse response, RegistrationQueryDTO queryDTO) {
+        registrationService.exportRegistrations(response, queryDTO);
+    }
+
     @Operation(summary = "获取我的报名记录")
     @GetMapping("/my")
     public Result<List<RegistrationVO>> getMyRegistrations() {
@@ -110,5 +119,12 @@ public class RegistrationController {
                 .orderByDesc(ActivityRegistration::getCreateTime)
                 .last("LIMIT 1"));
         return Result.success(registration);
+    }
+
+    @Operation(summary = "下载志愿者证书")
+    @GetMapping("/{activityId}/certificate")
+    public void downloadCertificate(HttpServletResponse response, @PathVariable Long activityId) {
+        Long userId = SecurityUtils.getUserId();
+        registrationService.downloadCertificate(response, activityId, userId);
     }
 }

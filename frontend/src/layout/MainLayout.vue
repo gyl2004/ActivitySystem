@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Sun, LogIn, User, Search, MapPin, LayoutDashboard, LogOut } from 'lucide-vue-next'
+import { Sun, LogIn, User, Search, LayoutDashboard, LogOut } from 'lucide-vue-next'
 import request from '../utils/request'
 import { ElMessage, ElNotification } from 'element-plus'
 
@@ -9,10 +9,12 @@ const router = useRouter()
 const userInfo = ref<any>(null)
 const isAdmin = ref(false)
 let socket: WebSocket | null = null
+const wsIdentity = ref('public')
+let shouldReconnect = true
 
 const initWebSocket = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsUrl = `${protocol}//localhost:8080/api/ws/notification`
+  const wsUrl = `${protocol}//localhost:8080/api/ws/notification/${encodeURIComponent(wsIdentity.value)}`
   
   socket = new WebSocket(wsUrl)
   
@@ -40,9 +42,20 @@ const initWebSocket = () => {
       return
     }
 
+    if (payload && payload.type === 'checkin') {
+      ElNotification({
+        title: '新签到',
+        message: `${payload.nickname} 刚刚完成了签到！`,
+        type: 'success',
+        duration: 4000,
+        position: 'bottom-right'
+      })
+      return
+    }
+
     ElNotification({
       title: '新消息',
-      message: event.data,
+      message: payload && payload.message ? payload.message : (typeof event.data === 'string' && event.data.startsWith('{') ? '您有一条新消息' : event.data),
       type: 'info',
       duration: 5000,
       position: 'bottom-right'
@@ -51,8 +64,9 @@ const initWebSocket = () => {
   
   socket.onclose = () => {
     console.log('WebSocket connection closed')
-    // 重连逻辑
-    setTimeout(() => initWebSocket(), 5000)
+    if (shouldReconnect) {
+      setTimeout(() => initWebSocket(), 5000)
+    }
   }
 }
 
@@ -63,7 +77,13 @@ const fetchUserInfo = async () => {
   try {
     const data: any = await request.get('/api/auth/me')
     userInfo.value = data.user
-    isAdmin.value = data.roles.includes('admin')
+    isAdmin.value = data.roles.includes('admin') || data.roles.includes('super_admin')
+    wsIdentity.value = String(data.user?.id || 'public')
+    if (socket) {
+      socket.close()
+    } else {
+      initWebSocket()
+    }
   } catch (error) {
     console.error(error)
     localStorage.removeItem('token')
@@ -76,6 +96,10 @@ const handleLogout = () => {
   localStorage.removeItem('tokenPrefix')
   userInfo.value = null
   isAdmin.value = false
+  wsIdentity.value = 'public'
+  if (socket) {
+    socket.close()
+  }
   ElMessage.success('已退出登录')
   router.push('/login')
 }
@@ -87,6 +111,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (socket) {
+    shouldReconnect = false
     socket.close()
   }
 })

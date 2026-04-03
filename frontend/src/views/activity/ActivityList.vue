@@ -3,6 +3,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search, MapPin, Calendar, Star, Users, ArrowRight, LayoutGrid, LayoutList } from 'lucide-vue-next'
 import request from '../../utils/request'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const viewMode = ref<'grid' | 'list'>('grid')
@@ -11,6 +12,8 @@ const activeCategoryId = ref(0)
 const searchQuery = ref('')
 const activities = ref<any[]>([])
 const loading = ref(false)
+const nearbyMode = ref(false)
+const nearbyDistance = ref(5)
 const pagination = ref({
   current: 1,
   size: 8,
@@ -66,6 +69,41 @@ const fetchActivities = async () => {
   }
 }
 
+const fetchNearbyActivities = async () => {
+  if (!navigator.geolocation) {
+    ElMessage.error('当前浏览器不支持定位')
+    return
+  }
+  loading.value = true
+  try {
+    const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 8000 })
+    })
+    const data: any = await request.get('/api/activities/nearby', {
+      params: {
+        longitude: pos.coords.longitude,
+        latitude: pos.coords.latitude,
+        distance: nearbyDistance.value
+      }
+    })
+    const list = Array.isArray(data) ? data : []
+    const keyword = searchQuery.value.trim()
+    if (keyword) {
+      activities.value = list.filter((a: any) => String(a.title || '').includes(keyword))
+    } else {
+      activities.value = list
+    }
+    pagination.value.total = activities.value.length
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('定位失败或附近活动获取失败')
+    nearbyMode.value = false
+    fetchActivities()
+  } finally {
+    loading.value = false
+  }
+}
+
 const handlePageChange = (page: number) => {
   pagination.value.current = page
   fetchActivities()
@@ -73,10 +111,27 @@ const handlePageChange = (page: number) => {
 
 const handleSearch = () => {
   pagination.value.current = 1
+  if (nearbyMode.value) {
+    fetchNearbyActivities()
+    return
+  }
   fetchActivities()
 }
 
+const toggleNearby = async () => {
+  nearbyMode.value = !nearbyMode.value
+  pagination.value.current = 1
+  if (nearbyMode.value) {
+    await fetchNearbyActivities()
+  } else {
+    fetchActivities()
+  }
+}
+
 watch(activeCategoryId, () => {
+  if (nearbyMode.value) {
+    nearbyMode.value = false
+  }
   pagination.value.current = 1
   fetchActivities()
 })
@@ -128,6 +183,24 @@ onMounted(() => {
       </div>
 
       <div class="flex items-center space-x-2 bg-white p-2 rounded-[2rem] shadow-sm border border-slate-100 shrink-0">
+        <button
+          @click="toggleNearby"
+          :class="['px-4 py-3 rounded-2xl transition-all font-bold flex items-center space-x-2', nearbyMode ? 'bg-primary-500 text-white shadow-lg shadow-primary-200' : 'text-slate-500 hover:bg-slate-50']"
+        >
+          <MapPin class="w-5 h-5" />
+          <span class="hidden sm:block">{{ nearbyMode ? `附近${nearbyDistance}km` : '附近活动' }}</span>
+        </button>
+        <el-select
+          v-model="nearbyDistance"
+          class="!w-28"
+          size="large"
+          @change="nearbyMode ? fetchNearbyActivities() : undefined"
+        >
+          <el-option :value="1" label="1km" />
+          <el-option :value="3" label="3km" />
+          <el-option :value="5" label="5km" />
+          <el-option :value="10" label="10km" />
+        </el-select>
         <button 
           @click="viewMode = 'grid'"
           :class="['p-3 rounded-2xl transition-all', viewMode === 'grid' ? 'bg-primary-50 text-primary-600' : 'text-slate-400 hover:bg-slate-50']"
@@ -283,7 +356,7 @@ onMounted(() => {
     </div>
 
     <!-- Pagination -->
-    <div class="flex justify-center pt-12" v-if="pagination.total > pagination.size">
+    <div class="flex justify-center pt-12" v-if="!nearbyMode && pagination.total > pagination.size">
       <el-pagination
         v-model:current-page="pagination.current"
         :page-size="pagination.size"

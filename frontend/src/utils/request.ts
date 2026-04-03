@@ -25,6 +25,10 @@ service.interceptors.request.use(
 // Response interceptor
 service.interceptors.response.use(
   response => {
+    const responseType = response.config?.responseType
+    if (responseType === 'blob' || responseType === 'arraybuffer') {
+      return response.data
+    }
     const res = response.data
     if (res.code !== 200) {
       ElMessage.error(res.message || '系统错误')

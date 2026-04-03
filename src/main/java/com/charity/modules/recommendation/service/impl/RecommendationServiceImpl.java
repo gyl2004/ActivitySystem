@@ -5,14 +5,15 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.charity.modules.activity.entity.Activity;
 import com.charity.modules.activity.service.ActivityService;
 import com.charity.modules.recommendation.entity.ActivityRecommendation;
+import com.charity.modules.recommendation.entity.UserBehavior;
 import com.charity.modules.recommendation.mapper.ActivityRecommendationMapper;
 import com.charity.modules.recommendation.service.RecommendationService;
+import com.charity.modules.recommendation.service.UserBehaviorService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -25,25 +26,64 @@ public class RecommendationServiceImpl extends ServiceImpl<ActivityRecommendatio
     @Autowired
     private ActivityService activityService;
 
+    @Autowired
+    private UserBehaviorService userBehaviorService;
+
     @Override
     public List<Activity> recommendForUser(Long userId, int limit) {
         log.info("开始为用户 {} 进行个性化推荐", userId);
-        // 这里应该是复杂的推荐算法逻辑 (UserCF/ItemCF/混合推荐)
-        // 简单模拟逻辑：从推荐记录表中获取预先计算好的推荐结果
-        List<ActivityRecommendation> recommendations = this.list(new LambdaQueryWrapper<ActivityRecommendation>()
-                .eq(ActivityRecommendation::getUserId, userId)
-                .orderByDesc(ActivityRecommendation::getScore)
-                .last("LIMIT " + limit));
-
-        if (recommendations.isEmpty()) {
-            // 如果没有个性化推荐，则退而求其次推荐热门活动
+        
+        // 1. 获取用户近期互动的活动
+        List<UserBehavior> myBehaviors = userBehaviorService.list(new LambdaQueryWrapper<UserBehavior>()
+                .eq(UserBehavior::getUserId, userId)
+                .orderByDesc(UserBehavior::getBehaviorTime)
+                .last("LIMIT 50"));
+        
+        if (myBehaviors.isEmpty()) {
             return recommendPopular(limit);
         }
 
-        List<Long> activityIds = recommendations.stream()
-                .map(ActivityRecommendation::getActivityId)
+        Set<Long> myActivityIds = myBehaviors.stream()
+                .map(UserBehavior::getActivityId)
+                .collect(Collectors.toSet());
+
+        // 2. 简单的 ItemCF 逻辑：寻找与用户互动过的活动相似的活动
+        // 这里的相似度基于共同被互动的用户数来衡量
+        Map<Long, Double> scores = new HashMap<>();
+        for (Long activityId : myActivityIds) {
+            // 找出也互动过该活动的其他用户
+            List<UserBehavior> others = userBehaviorService.list(new LambdaQueryWrapper<UserBehavior>()
+                    .eq(UserBehavior::getActivityId, activityId)
+                    .ne(UserBehavior::getUserId, userId));
+            
+            Set<Long> otherUserIds = others.stream()
+                    .map(UserBehavior::getUserId)
+                    .collect(Collectors.toSet());
+            
+            if (otherUserIds.isEmpty()) continue;
+
+            // 找出这些用户还互动过哪些其他活动
+            List<UserBehavior> candidates = userBehaviorService.list(new LambdaQueryWrapper<UserBehavior>()
+                    .in(UserBehavior::getUserId, otherUserIds)
+                    .notIn(UserBehavior::getActivityId, myActivityIds));
+            
+            for (UserBehavior candidate : candidates) {
+                scores.put(candidate.getActivityId(), scores.getOrDefault(candidate.getActivityId(), 0.0) + 1.0);
+            }
+        }
+
+        // 3. 按分数排序并返回
+        List<Long> recommendedIds = scores.entrySet().stream()
+                .sorted(Map.Entry.<Long, Double>comparingByValue().reversed())
+                .limit(limit)
+                .map(Map.Entry::getKey)
                 .collect(Collectors.toList());
-        return activityService.listByIds(activityIds);
+
+        if (recommendedIds.isEmpty()) {
+            return recommendPopular(limit);
+        }
+
+        return activityService.listByIds(recommendedIds);
     }
 
     @Override

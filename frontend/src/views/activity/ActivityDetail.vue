@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Calendar, MapPin, Users, Heart, Share2, Star, CheckCircle, Info, MessageCircle, ArrowLeft, Send, Loader2, QrCode, Clock, Trophy, Smile, Meh, Frown } from 'lucide-vue-next'
+import { Calendar, MapPin, Users, Heart, Share2, Star, CheckCircle, Info, MessageCircle, ArrowLeft, Send, Loader2, QrCode, Clock, Trophy, Smile, Meh, Frown, Download } from 'lucide-vue-next'
 import request from '../../utils/request'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,6 +23,7 @@ const reviewRating = ref(5)
 const repliesMap = ref<Record<string, any[]>>({})
 const replyDraftMap = ref<Record<string, string>>({})
 const replyLoadingMap = ref<Record<string, boolean>>({})
+const autoCheckinTried = ref(false)
 
 // 默认图片映射
 const DEFAULT_IMAGES: Record<number, string> = {
@@ -57,6 +58,21 @@ const fetchRegistrationStatus = async () => {
     registrationStatus.value = data
     if (data && data.status === 1) {
       fetchCheckinStatus()
+      const token = String(route.query.token || '').trim()
+      if (token && !autoCheckinTried.value) {
+        autoCheckinTried.value = true
+        try {
+          await request.post('/api/checkins', {
+            activityId: Number(route.params.id),
+            checkinType: 1,
+            token
+          })
+          ElMessage.success('签到成功！已为您发放志愿时长与积分')
+          fetchCheckinStatus()
+        } catch (e) {
+          console.error(e)
+        }
+      }
     }
   } catch (error) {
     console.error('获取报名状态失败', error)
@@ -172,8 +188,13 @@ const handleRegister = async () => {
   submitting.value = true
   try {
     await request.post('/api/registrations', { activityId: activity.value.id })
-    ElMessage.success('报名提交成功，请等待审核')
-    fetchRegistrationStatus()
+    ElMessage({
+      message: '报名请求已提交至后台处理队列，请留意系统通知',
+      type: 'success',
+      duration: 5000
+    })
+    // 延迟 1 秒后刷新状态，给 MQ 处理一点点时间
+    setTimeout(() => fetchRegistrationStatus(), 1000)
   } catch (error) {
     console.error(error)
   } finally {
@@ -182,11 +203,24 @@ const handleRegister = async () => {
 }
 
 const handleCheckin = async () => {
-  checkingIn.value = true
+  if (!localStorage.getItem('token')) {
+    ElMessage.warning('请先登录后再签到')
+    router.push('/login')
+    return
+  }
   try {
-    await request.post('/api/checkins', { 
+    const { value } = await ElMessageBox.prompt('请输入现场提供的 6 位数签到码', '现场签到', {
+      confirmButtonText: '签到',
+      cancelButtonText: '取消',
+      inputPlaceholder: '请输入 6 位数签到码',
+      inputValidator: (v: string) => /^\d{6}$/.test(String(v || '').trim()),
+      inputErrorMessage: '签到码必须是 6 位数字'
+    })
+    checkingIn.value = true
+    await request.post('/api/checkins', {
       activityId: activity.value.id,
-      checkinType: 1
+      checkinType: 1,
+      token: String(value).trim()
     })
     ElMessage.success('签到成功！已为您发放志愿时长与积分')
     fetchCheckinStatus()
@@ -214,11 +248,18 @@ const handleSubmitReview = async () => {
   }
 }
 
+const handleDownloadCertificate = () => {
+  const token = localStorage.getItem('token')
+  const url = `http://localhost:8080/api/registrations/${activity.value.id}/certificate?token=${token}`
+  window.open(url, '_blank')
+}
+
 watch(
   () => route.params.id,
   async () => {
     window.scrollTo({ top: 0, left: 0 })
     loading.value = true
+    autoCheckinTried.value = false
     await fetchActivity()
   },
   { immediate: true }
@@ -448,14 +489,23 @@ watch(
           <div class="space-y-4">
             <template v-if="registrationStatus && registrationStatus.status !== 3">
               <template v-if="registrationStatus.status === 1">
-                <button 
-                  v-if="checkinStatus"
-                  disabled
-                  class="w-full py-5 bg-green-50 text-green-600 rounded-[1.5rem] font-bold text-xl transition-all cursor-not-allowed flex items-center justify-center border border-green-200"
-                >
-                  <CheckCircle class="w-6 h-6 mr-2" />
-                  <span>已签到</span>
-                </button>
+                <div v-if="checkinStatus" class="space-y-4">
+                  <button 
+                    disabled
+                    class="w-full py-5 bg-green-50 text-green-600 rounded-[1.5rem] font-bold text-xl transition-all cursor-not-allowed flex items-center justify-center border border-green-200"
+                  >
+                    <CheckCircle class="w-6 h-6 mr-2" />
+                    <span>已签到</span>
+                  </button>
+                  <!-- 证书下载按钮 -->
+                  <button 
+                    @click="handleDownloadCertificate"
+                    class="w-full py-4 bg-primary-500 text-white rounded-[1.25rem] font-bold flex items-center justify-center space-x-2 hover:bg-primary-600 shadow-lg shadow-primary-100 transition-all active:scale-95"
+                  >
+                    <Download class="w-5 h-5" />
+                    <span>获取志愿者证书</span>
+                  </button>
+                </div>
                 <button 
                   v-else
                   @click="handleCheckin"
@@ -464,7 +514,7 @@ watch(
                 >
                   <Loader2 v-if="checkingIn" class="w-6 h-6 animate-spin mr-2" />
                   <QrCode v-else class="w-6 h-6 mr-2" />
-                  <span>{{ checkingIn ? '签到中...' : '立即签到' }}</span>
+                  <span>{{ checkingIn ? '签到中...' : '输入签到码签到' }}</span>
                 </button>
               </template>
               <button 

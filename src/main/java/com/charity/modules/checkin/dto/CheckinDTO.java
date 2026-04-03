@@ -14,5 +14,6 @@ public class CheckinDTO {
     private Long activityId;
     private BigDecimal longitude;
     private BigDecimal latitude;
-    private Integer checkinType; // 1-扫描二维码, 2-管理员手动签到
+    private Integer checkinType; // 1-输入签到码签到, 2-管理员手动签到
+    private String token; // 签到码，用于验证
 }

@@ -7,6 +7,8 @@ import com.charity.modules.activity.entity.Activity;
 import com.charity.modules.activity.dto.ActivityDTO;
 import com.charity.modules.activity.dto.ActivityQueryDTO;
 
+import java.util.List;
+
 /**
  * 活动服务接口
  */
@@ -56,4 +58,9 @@ public interface ActivityService extends IService<Activity> {
      * 导出活动数据
      */
     void exportActivities(jakarta.servlet.http.HttpServletResponse response, ActivityQueryDTO queryDTO);
+
+    /**
+     * 搜索附近活动
+     */
+    List<Activity> findNearby(Double longitude, Double latitude, Double distance);
 }

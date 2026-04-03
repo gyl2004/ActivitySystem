@@ -41,12 +41,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        final String authHeader = request.getHeader(header);
+        String authHeader = request.getHeader(header);
         String username = null;
         String jwt = null;
 
+        // 优先从 Header 获取
         if (StringUtils.hasText(authHeader) && authHeader.startsWith(prefix)) {
             jwt = authHeader.substring(prefix.length()).trim();
+        } 
+        // 其次尝试从 URL 参数获取 (用于 Excel 导出等场景)
+        else if (StringUtils.hasText(request.getParameter("token"))) {
+            jwt = request.getParameter("token");
+        }
+
+        if (jwt != null) {
             try {
                 username = jwtUtils.getUsernameFromToken(jwt);
             } catch (Exception e) {

@@ -1,14 +1,21 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue'
-import { Plus, Search, MoreVertical, Edit2, Trash2, CheckCircle2, XCircle, MapPin, Image as ImageIcon, RotateCcw, Loader2 } from 'lucide-vue-next'
+import { Plus, Search, MoreVertical, Edit2, Trash2, CheckCircle2, XCircle, MapPin, Image as ImageIcon, RotateCcw, Loader2, Download, Copy, QrCode } from 'lucide-vue-next'
 import request from '../../utils/request'
 import { ElMessage, ElMessageBox, FormInstance } from 'element-plus'
+import { downloadBlob } from '../../utils/download'
 
 const loading = ref(true)
 const activities = ref<any[]>([])
 const categories = ref<any[]>([])
 const pagination = ref({ current: 1, size: 10, total: 0 })
 const searchQuery = ref('')
+const exporting = ref(false)
+
+const qrDialogVisible = ref(false)
+const qrLoading = ref(false)
+const qrCodeValue = ref('')
+const qrActivityTitle = ref('')
 
 // Dialog state
 const dialogVisible = ref(false)
@@ -113,6 +120,49 @@ const fetchActivities = async () => {
     console.error(error)
   } finally {
     loading.value = false
+  }
+}
+
+const handleExport = async () => {
+  exporting.value = true
+  try {
+    const blob: any = await request.get('/api/activities/export', {
+      params: {
+        title: searchQuery.value || undefined
+      },
+      responseType: 'blob'
+    })
+    downloadBlob(blob, `活动数据_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    console.error(error)
+  } finally {
+    exporting.value = false
+  }
+}
+
+const handleCopy = async (id: number) => {
+  try {
+    await request.post(`/api/activities/${id}/copy`)
+    ElMessage.success('复制成功')
+    fetchActivities()
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const handleShowQrCode = async (row: any) => {
+  qrDialogVisible.value = true
+  qrLoading.value = true
+  qrCodeValue.value = ''
+  qrActivityTitle.value = row.title
+  try {
+    const code: any = await request.get(`/api/checkins/code/${row.id}?expireMinutes=5`)
+    qrCodeValue.value = code
+  } catch (error) {
+    console.error(error)
+  } finally {
+    qrLoading.value = false
   }
 }
 
@@ -237,10 +287,20 @@ onMounted(() => {
         <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight">活动管理</h2>
         <p class="text-slate-500 font-medium mt-1">发布、更新和维护您的公益活动。</p>
       </div>
-      <button @click="handleCreate" class="flex items-center space-x-2 bg-primary-500 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-primary-200 hover:bg-primary-600 transition-all active:scale-95">
-        <Plus class="w-5 h-5" />
-        <span>发布新活动</span>
-      </button>
+      <div class="flex items-center space-x-3">
+        <button
+          @click="handleExport"
+          :disabled="exporting"
+          class="flex items-center space-x-2 bg-white text-slate-700 px-6 py-3 rounded-2xl font-bold border border-slate-200 hover:bg-slate-50 transition-all disabled:opacity-70"
+        >
+          <Download class="w-5 h-5" />
+          <span>{{ exporting ? '导出中...' : '导出活动' }}</span>
+        </button>
+        <button @click="handleCreate" class="flex items-center space-x-2 bg-primary-500 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-primary-200 hover:bg-primary-600 transition-all active:scale-95">
+          <Plus class="w-5 h-5" />
+          <span>发布新活动</span>
+        </button>
+      </div>
     </div>
 
     <!-- Search Bar -->
@@ -312,6 +372,8 @@ onMounted(() => {
                     <el-dropdown-item v-if="row.status < 2" @click="handlePublish(row.id)" :icon="CheckCircle2">发布活动</el-dropdown-item>
                     <el-dropdown-item v-if="row.status === 2" @click="handleCancel(row.id)" :icon="XCircle" class="!text-rose-500">取消活动</el-dropdown-item>
                     <el-dropdown-item v-if="row.status >= 2" @click="handleRevert(row.id)" :icon="RotateCcw">退回草稿</el-dropdown-item>
+                    <el-dropdown-item @click="handleCopy(row.id)" :icon="Copy">复制活动</el-dropdown-item>
+                    <el-dropdown-item v-if="row.status >= 2" @click="handleShowQrCode(row)" :icon="QrCode">获取签到码</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -431,6 +493,29 @@ onMounted(() => {
           </button>
         </div>
       </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="qrDialogVisible"
+      title="活动签到码"
+      width="420px"
+      class="sunny-dialog"
+      destroy-on-close
+    >
+      <div class="space-y-6 text-center">
+        <div class="text-slate-700 font-bold line-clamp-2 text-lg">{{ qrActivityTitle }}</div>
+        <div v-if="qrLoading" class="flex justify-center py-10">
+          <Loader2 class="w-8 h-8 text-primary-500 animate-spin" />
+        </div>
+        <div v-else-if="qrCodeValue" class="flex flex-col items-center space-y-4">
+          <div class="text-6xl font-black text-primary-600 tracking-[0.2em] bg-primary-50 px-8 py-6 rounded-3xl border-2 border-primary-100 shadow-inner">
+            {{ qrCodeValue }}
+          </div>
+          <p class="text-slate-500 text-sm">请将此 6 位数字提供给现场志愿者进行签到</p>
+          <p class="text-rose-500 text-xs font-bold bg-rose-50 px-4 py-2 rounded-full">注意：该签到码有效期为 5 分钟</p>
+        </div>
+        <div v-else class="text-center text-slate-400 py-10">签到码生成失败</div>
+      </div>
     </el-dialog>
   </div>
 </template>

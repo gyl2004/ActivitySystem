@@ -23,7 +23,16 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.SearchHit;
+import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.data.elasticsearch.core.geo.GeoPoint;
+import org.springframework.data.elasticsearch.core.query.Criteria;
+import org.springframework.data.elasticsearch.core.query.CriteriaQuery;
+import org.springframework.data.elasticsearch.core.query.GeoDistanceOrder;
+import org.springframework.data.elasticsearch.core.query.Query;
+import org.springframework.data.domain.Sort;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -38,6 +47,7 @@ import java.util.stream.Collectors;
 /**
  * 活动服务实现类
  */
+@Slf4j
 @Service
 public class ActivityServiceImpl extends ServiceImpl<ActivityMapper, Activity> implements ActivityService {
 
@@ -46,6 +56,9 @@ public class ActivityServiceImpl extends ServiceImpl<ActivityMapper, Activity> i
 
     @Autowired
     private ActivityRepository activityRepository;
+
+    @Autowired
+    private ElasticsearchOperations elasticsearchOperations;
 
     @Override
     public IPage<Activity> findPage(Page<Activity> page, ActivityQueryDTO queryDTO) {
@@ -183,7 +196,13 @@ public class ActivityServiceImpl extends ServiceImpl<ActivityMapper, Activity> i
 
     @Override
     public IPage<Activity> search(Page<Activity> page, String keyword) {
-        List<ActivityDoc> docs = activityRepository.findByTitleOrSummaryOrContent(keyword, keyword, keyword);
+        List<ActivityDoc> docs;
+        try {
+            docs = activityRepository.findByTitleOrSummaryOrContent(keyword, keyword, keyword);
+        } catch (Exception e) {
+            log.error("ES 搜索异常: {}", e.getMessage());
+            return new Page<>(); // 降级处理，返回空数据
+        }
         List<Long> ids = docs.stream().map(doc -> Long.valueOf(doc.getId())).collect(Collectors.toList());
         if (ids.isEmpty()) {
             return new Page<>();
@@ -231,8 +250,26 @@ public class ActivityServiceImpl extends ServiceImpl<ActivityMapper, Activity> i
         writer.addHeaderAlias("registeredCount", "已报名人数");
         writer.addHeaderAlias("points", "积分");
         writer.addHeaderAlias("volunteerDuration", "志愿时长");
+        writer.setOnlyAlias(true);
 
-        writer.write(list, true);
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        List<java.util.Map<String, Object>> exportList = list.stream().map(activity -> {
+            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("id", activity.getId());
+            map.put("title", activity.getTitle());
+            map.put("summary", activity.getSummary());
+            map.put("locationName", activity.getLocationName());
+            map.put("address", activity.getAddress());
+            map.put("startTime", activity.getStartTime() != null ? activity.getStartTime().format(formatter) : null);
+            map.put("endTime", activity.getEndTime() != null ? activity.getEndTime().format(formatter) : null);
+            map.put("status", activity.getStatus());
+            map.put("registeredCount", activity.getRegisteredCount());
+            map.put("points", activity.getPoints());
+            map.put("volunteerDuration", activity.getVolunteerDuration());
+            return map;
+        }).collect(java.util.stream.Collectors.toList());
+
+        writer.write(exportList, true);
 
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8");
         String fileName = URLEncoder.encode("活动数据", StandardCharsets.UTF_8);
@@ -249,16 +286,59 @@ public class ActivityServiceImpl extends ServiceImpl<ActivityMapper, Activity> i
         }
     }
 
-    private void syncToEs(Activity activity) {
-        ActivityDoc doc = BeanUtil.copyProperties(activity, ActivityDoc.class, "id");
-        doc.setId(activity.getId().toString());
-        if (activity.getLongitude() != null && activity.getLatitude() != null) {
-            doc.setLocation(new GeoPoint(activity.getLatitude().doubleValue(), activity.getLongitude().doubleValue()));
+    @Override
+    public List<Activity> findNearby(Double longitude, Double latitude, Double distance) {
+        GeoPoint point = new GeoPoint(latitude, longitude);
+        
+        // 构造 ES 地理位置查询
+        Criteria criteria = new Criteria("location").within(point, distance + "km");
+        Query query = new CriteriaQuery(criteria);
+        
+        // 按距离排序
+        query.addSort(Sort.by(new GeoDistanceOrder("location", point)));
+        
+        SearchHits<ActivityDoc> hits;
+        try {
+            hits = elasticsearchOperations.search(query, ActivityDoc.class);
+        } catch (Exception e) {
+            log.error("ES 附近搜索异常: {}", e.getMessage());
+            return List.of(); // 降级处理，返回空数据
         }
-        activityRepository.save(doc);
+        
+        List<Long> ids = hits.getSearchHits().stream()
+                .map(SearchHit::getContent)
+                .map(doc -> Long.valueOf(doc.getId()))
+                .collect(Collectors.toList());
+        
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        
+        // 从数据库中获取详细信息并保持顺序
+        return this.list(new LambdaQueryWrapper<Activity>()
+                .in(Activity::getId, ids)
+                .eq(Activity::getStatus, 2)
+                .last("ORDER BY FIELD(id, " + ids.stream().map(String::valueOf).collect(Collectors.joining(",")) + ")"));
+    }
+
+    private void syncToEs(Activity activity) {
+        try {
+            ActivityDoc doc = BeanUtil.copyProperties(activity, ActivityDoc.class, "id");
+            doc.setId(activity.getId().toString());
+            if (activity.getLongitude() != null && activity.getLatitude() != null) {
+                doc.setLocation(new GeoPoint(activity.getLatitude().doubleValue(), activity.getLongitude().doubleValue()));
+            }
+            activityRepository.save(doc);
+        } catch (Exception e) {
+            log.error("同步活动到 ES 失败: {}", e.getMessage());
+        }
     }
 
     private void deleteFromEs(Long id) {
-        activityRepository.deleteById(id.toString());
+        try {
+            activityRepository.deleteById(id.toString());
+        } catch (Exception e) {
+            log.error("从 ES 删除活动失败: {}", e.getMessage());
+        }
     }
 }

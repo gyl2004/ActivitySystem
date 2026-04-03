@@ -3,6 +3,7 @@ package com.charity.security;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.charity.modules.sys.entity.SysUser;
 import com.charity.modules.sys.mapper.SysPermissionMapper;
+import com.charity.modules.sys.mapper.SysRoleMapper;
 import com.charity.modules.sys.mapper.SysUserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -25,6 +26,9 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     @Autowired
     private SysPermissionMapper permissionMapper;
 
+    @Autowired
+    private SysRoleMapper roleMapper;
+
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>()
@@ -39,6 +43,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         }
 
         List<String> permissions = permissionMapper.findPermissionKeysByUserId(user.getId());
+        List<String> roles = roleMapper.findRoleKeysByUserId(user.getId());
         
         // 过滤掉可能存在的 null 或空权限
         HashSet<String> authorities = new HashSet<>();
@@ -46,6 +51,15 @@ public class UserDetailsServiceImpl implements UserDetailsService {
             for (String perm : permissions) {
                 if (perm != null && !perm.trim().isEmpty()) {
                     authorities.add(perm);
+                }
+            }
+        }
+        
+        // 添加角色权限 (带 ROLE_ 前缀以便于 hasRole 使用)
+        if (roles != null) {
+            for (String role : roles) {
+                if (role != null && !role.trim().isEmpty()) {
+                    authorities.add("ROLE_" + role);
                 }
             }
         }
