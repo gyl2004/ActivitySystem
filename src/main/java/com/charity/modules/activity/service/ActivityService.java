@@ -41,4 +41,19 @@ public interface ActivityService extends IService<Activity> {
      * 退回到草稿状态
      */
     void revertToDraft(Long id);
+
+    /**
+     * 全文搜索活动
+     */
+    IPage<Activity> search(Page<Activity> page, String keyword);
+
+    /**
+     * 复制活动
+     */
+    void copyActivity(Long id, Long userId);
+
+    /**
+     * 导出活动数据
+     */
+    void exportActivities(jakarta.servlet.http.HttpServletResponse response, ActivityQueryDTO queryDTO);
 }

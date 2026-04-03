@@ -74,6 +74,22 @@ public class RegistrationController {
         return Result.success();
     }
 
+    @Operation(summary = "批量审核报名")
+    @PutMapping("/batch/audit")
+    @PreAuthorize("hasAuthority('registration:audit')")
+    public Result<Void> batchAudit(@RequestParam List<Long> ids, @Valid @RequestBody AuditDTO auditDTO) {
+        registrationService.batchAudit(ids, auditDTO);
+        return Result.success();
+    }
+
+    @Operation(summary = "报名退款处理")
+    @PostMapping("/{id}/refund")
+    @PreAuthorize("hasAuthority('registration:audit')")
+    public Result<Void> refund(@PathVariable Long id) {
+        registrationService.refund(id);
+        return Result.success();
+    }
+
     @Operation(summary = "获取我的报名记录")
     @GetMapping("/my")
     public Result<List<RegistrationVO>> getMyRegistrations() {

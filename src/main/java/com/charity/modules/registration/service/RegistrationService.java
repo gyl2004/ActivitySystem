@@ -43,6 +43,17 @@ public interface RegistrationService extends IService<ActivityRegistration> {
     void audit(Long id, AuditDTO auditDTO);
 
     /**
+     * 批量审核报名
+     */
+    void batchAudit(List<Long> ids, AuditDTO auditDTO);
+
+    /**
+     * 报名退款处理
+     */
+    void refund(Long id);
+}
+
+    /**
      * 获取当前用户的报名记录
      */
     List<RegistrationVO> findMyRegistrations(Long userId);

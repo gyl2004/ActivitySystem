@@ -16,11 +16,14 @@ import com.charity.modules.registration.service.RegistrationService;
 import com.charity.modules.registration.vo.RegistrationVO;
 import com.charity.modules.sys.entity.SysUser;
 import com.charity.modules.sys.service.SysUserService;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import com.charity.config.RabbitMQConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -36,6 +39,9 @@ public class RegistrationServiceImpl extends ServiceImpl<ActivityRegistrationMap
 
     @Autowired
     private SysUserService userService;
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
 
     @Override
     public Map<Integer, Long> getStatusStats() {
@@ -96,9 +102,6 @@ public class RegistrationServiceImpl extends ServiceImpl<ActivityRegistrationMap
         if (now.isBefore(activity.getRegistrationStart()) || now.isAfter(activity.getRegistrationEnd())) {
             throw new AppException("不在报名时间内");
         }
-        if (activity.getMaxParticipants() > 0 && activity.getRegisteredCount() >= activity.getMaxParticipants()) {
-            throw new AppException("报名人数已满");
-        }
 
         // 检查是否已经报名过 (非取消状态)
         Long count = this.count(new LambdaQueryWrapper<ActivityRegistration>()
@@ -112,8 +115,16 @@ public class RegistrationServiceImpl extends ServiceImpl<ActivityRegistrationMap
         ActivityRegistration registration = new ActivityRegistration();
         BeanUtil.copyProperties(registrationDTO, registration);
         registration.setUserId(userId);
-        registration.setStatus(0); // 待审核
-        this.save(registration);
+
+        if (activity.getMaxParticipants() > 0 && activity.getRegisteredCount() >= activity.getMaxParticipants()) {
+            registration.setStatus(4); // 候补中
+            this.save(registration);
+            sendNotify(userId, "进入候补队列", "您报名的活动【" + activity.getTitle() + "】名额已满，您已进入候补队列。", 2);
+        } else {
+            registration.setStatus(0); // 待审核
+            this.save(registration);
+            sendNotify(userId, "报名申请已提交", "您报名的活动【" + activity.getTitle() + "】已成功提交，请耐心等待管理员审核。", 2);
+        }
     }
 
     @Override
@@ -134,37 +145,98 @@ public class RegistrationServiceImpl extends ServiceImpl<ActivityRegistrationMap
         this.updateById(registration);
 
         // 如果之前是通过状态，则需要减少活动报名数
+        Activity activity = activityService.getById(activityId);
         if (oldStatus == 1) {
-            Activity activity = activityService.getById(activityId);
             activity.setRegisteredCount(activity.getRegisteredCount() - 1);
             activityService.updateById(activity);
+            
+            // 自动补位：找第一个候补的人，转为待审核
+            ActivityRegistration firstWaiter = this.getOne(new LambdaQueryWrapper<ActivityRegistration>()
+                    .eq(ActivityRegistration::getActivityId, activityId)
+                    .eq(ActivityRegistration::getStatus, 4)
+                    .orderByAsc(ActivityRegistration::getCreateTime)
+                    .last("LIMIT 1"));
+            if (firstWaiter != null) {
+                firstWaiter.setStatus(0); // 待审核
+                this.updateById(firstWaiter);
+                sendNotify(firstWaiter.getUserId(), "获得候补名额", "您候补的活动【" + activity.getTitle() + "】已有名额空出，您已正式进入待审核列表。", 2);
+            }
         }
+
+        // 发送取消报名通知
+        sendNotify(userId, "报名已取消", "您报名的活动【" + (activity != null ? activity.getTitle() : "未知活动") + "】已取消。", 2);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void audit(Long id, AuditDTO auditDTO) {
+        this.doAudit(id, auditDTO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchAudit(List<Long> ids, AuditDTO auditDTO) {
+        for (Long id : ids) {
+            this.doAudit(id, auditDTO);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void refund(Long id) {
         ActivityRegistration registration = this.getById(id);
         if (registration == null) {
             throw new AppException("报名信息不存在");
         }
+        // 只有已取消的报名才可能需要退款 (假设只有付费活动才需要退款)
+        if (registration.getStatus() != 3) {
+            throw new AppException("只有已取消的报名才能进行退款处理");
+        }
+        
+        // 此处应集成支付系统的退款接口
+        // Mock 退款成功
+        sendNotify(registration.getUserId(), "退款成功通知", "您在活动中的报名退款已处理成功，资金将原路返回。", 2);
+    }
+
+    private void doAudit(Long id, AuditDTO auditDTO) {
+        ActivityRegistration registration = this.getById(id);
+        if (registration == null) {
+            return; // 忽略不存在的
+        }
         if (registration.getStatus() != 0) {
-            throw new AppException("该报名已审核过");
+            return; // 忽略已审核的
         }
 
         registration.setStatus(auditDTO.getStatus());
         registration.setAuditRemark(auditDTO.getAuditRemark());
         this.updateById(registration);
 
+        Activity activity = activityService.getById(registration.getActivityId());
         // 如果审核通过，增加活动报名数
         if (auditDTO.getStatus() == 1) {
-            Activity activity = activityService.getById(registration.getActivityId());
             if (activity.getMaxParticipants() > 0 && activity.getRegisteredCount() >= activity.getMaxParticipants()) {
-                throw new AppException("活动名额已满，无法审核通过");
+                throw new AppException("活动【" + activity.getTitle() + "】名额已满，无法继续审核通过");
             }
             activity.setRegisteredCount(activity.getRegisteredCount() + 1);
             activityService.updateById(activity);
         }
+
+        // 发送审核结果通知
+        String statusText = auditDTO.getStatus() == 1 ? "通过" : "不通过";
+        String content = "您报名的活动【" + (activity != null ? activity.getTitle() : "未知活动") + "】审核" + statusText + "。";
+        if (StringUtils.hasText(auditDTO.getAuditRemark())) {
+            content += " 审核备注：" + auditDTO.getAuditRemark();
+        }
+        sendNotify(registration.getUserId(), "报名审核结果", content, 2);
+    }
+
+    private void sendNotify(Long userId, String title, String content, Integer type) {
+        Map<String, Object> message = new HashMap<>();
+        message.put("userId", userId);
+        message.put("title", title);
+        message.put("content", content);
+        message.put("type", type);
+        rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFY_EXCHANGE, RabbitMQConfig.NOTIFY_ROUTING_KEY, message);
     }
 
     @Override

@@ -10,6 +10,7 @@ import com.charity.modules.activity.service.ActivityService;
 import com.charity.util.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -89,5 +90,31 @@ public class ActivityController {
     public Result<Void> revert(@PathVariable Long id) {
         activityService.revertToDraft(id);
         return Result.success();
+    }
+
+    @Operation(summary = "全文搜索活动")
+    @GetMapping("/search")
+    public Result<IPage<Activity>> search(
+            @RequestParam(defaultValue = "1") Long current,
+            @RequestParam(defaultValue = "10") Long size,
+            @RequestParam String keyword) {
+        Page<Activity> page = new Page<>(current, size);
+        return Result.success(activityService.search(page, keyword));
+    }
+
+    @Operation(summary = "复制活动")
+    @PostMapping("/{id}/copy")
+    @PreAuthorize("hasAuthority('activity:create')")
+    public Result<Void> copy(@PathVariable Long id) {
+        Long userId = SecurityUtils.getUserId();
+        activityService.copyActivity(id, userId);
+        return Result.success();
+    }
+
+    @Operation(summary = "导出活动")
+    @GetMapping("/export")
+    @PreAuthorize("hasAuthority('activity:export')")
+    public void export(HttpServletResponse response, ActivityQueryDTO queryDTO) {
+        activityService.exportActivities(response, queryDTO);
     }
 }
