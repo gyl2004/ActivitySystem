@@ -1,0 +1,48 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/resources/architecture/
+!**/src/main/resources/images/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/resources/architecture/
+!**/src/main/resources/images/
+
+### VS Code ###
+.vscode/
+
+### Frontend ###
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.vscode/
+
+### OS ###
+.DS_Store
+Thumbs.db

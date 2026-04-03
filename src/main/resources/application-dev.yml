@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/activity_system?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=GMT%2B8&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+      timeout: 5000
+
+jwt:
+  secret: 5367566B59703373367639792F423F4528482B4D6251655468576D5A71347437 # HS256 key (at least 32 bytes)
+  expiration: 86400 # 24 hours
+  header: Authorization
+  prefix: Bearer
