@@ -1,24 +1,25 @@
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/activity_system?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=GMT%2B8&allowPublicKeyRetrieval=true
-    username: root
-    password: 123456
+    url: ${DB_URL:jdbc:mysql://localhost:3306/activity_system?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=GMT%2B8&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    # 数据库密码通过环境变量 DB_PASSWORD 注入，禁止提交明文
+    password: ${DB_PASSWORD:}
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
       database: 0
       timeout: 5000
     elasticsearch:
-      uris: http://localhost:9200
+      uris: ${ES_URIS:http://localhost:9200}
       connection-timeout: 5s
       socket-timeout: 30s
     rabbitmq:
-      host: localhost
-      port: 5672
-      username: guest
-      password: guest
+      host: ${RABBITMQ_HOST:localhost}
+      port: ${RABBITMQ_PORT:5672}
+      username: ${RABBITMQ_USERNAME:guest}
+      password: ${RABBITMQ_PASSWORD:guest}
       publisher-confirm-type: correlated
       publisher-returns: true
       template:
@@ -36,7 +37,8 @@ spring:
             multiplier: 2.0
 
 jwt:
-  secret: 5367566B59703373367639792F423F4528482B4D6251655468576D5A71347437 # HS256 key (at least 32 bytes)
+  # JWT 签名密钥通过环境变量 JWT_SECRET 注入（至少 32 字节），禁止提交真实密钥
+  secret: ${JWT_SECRET:change-me-to-a-32-bytes-minimum-secret}
   expiration: 86400 # 24 hours
   header: Authorization
   prefix: Bearer
