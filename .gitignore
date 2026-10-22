@@ -52,3 +52,8 @@ application-local.yml
 application-local.yaml
 .env
 *.env
+
+### 归档文档（不纳入仓库）###
+毕业论文.txt
+活动管理系统后台模块清单.txt
+进度文档.md

@@ -73,7 +73,8 @@ ActivitySystem
 │   ├── application-dev.yml    开发环境配置（敏感项走环境变量）
 │   └── mapper/                MyBatis XML
 ├── frontend/                  Vue 3 + TypeScript 前端工程
-└── db/                        schema.sql 建表 · seed_data.sql 初始化数据
+├── db/                        schema.sql 建表 · seed_data.sql 初始化数据
+└── docs/                      模块清单与开发日志
 ```
 
 ## 快速开始
@@ -146,6 +147,13 @@ npm run dev
 4. **检索与推荐分离** —— Elasticsearch 承担关键字全文检索与相关度排序，热门推荐走 MySQL 聚合 + 缓存，两条链路互不阻塞。
 5. **实时看板** —— WebSocket 推送签到事件，前端 ECharts 增量渲染，替代定时轮询。
 6. **文件导出流式化** —— Excel 报表与 PDF 证书在服务端流式生成、前端 Blob 下载，避免大文件占用服务端内存。
+
+## 更多文档
+
+| 文档 | 内容 |
+|---|---|
+| [docs/MODULES.md](docs/MODULES.md) | 各业务模块的详细功能点与技术实现要点 |
+| [docs/DEVLOG.md](docs/DEVLOG.md) | 按版本记录的开发日志：每次迭代解决的问题与关键决策 |
 
 ## Roadmap
 
